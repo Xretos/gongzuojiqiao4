@@ -52,7 +52,7 @@
       window.Module = window.Module || {};
       window.Module.locateFile = function(path, prefix) {
         if (path.endsWith('.mem') || path.indexOf('quiet-emscripten.js.mem') !== -1) {
-          return '/quiet/quiet-emscripten.js.mem';
+          return 'https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet-emscripten.js.mem';
         }
         return (prefix || '') + path;
       };

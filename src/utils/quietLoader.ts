@@ -2,7 +2,7 @@
  * Quiet.js Loader and Mobile Browser Hardening Layer
  * Implements defenses against:
  * 1. Android Chrome/Edge strict getUserMedia user gesture policies
- * 2. Emscripten locateFile .mem 404 / abort issues
+ * 2. Emscripten locateFile .mem 404 / abort issues & GitHub Pages subpath isolation
  * 3. Missing intArrayFromString and ccall in compiled Emscripten exports
  */
 
@@ -13,19 +13,31 @@ export interface QuietEngineConfig {
   quietJsUrl: string;
 }
 
-// Default URLs pointing to local static assets in /quiet/ with fallback to jsdelivr CDN
-export const DEFAULT_QUIET_CONFIG: QuietEngineConfig = {
-  profilesUrl: '/quiet/quiet-profiles.json',
-  memUrl: '/quiet/quiet-emscripten.js.mem',
-  emscriptenJsUrl: '/quiet/quiet-emscripten.js',
-  quietJsUrl: '/quiet/quiet.js',
-};
-
 export const CDN_QUIET_CONFIG: QuietEngineConfig = {
   profilesUrl: 'https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet-profiles.json',
   memUrl: 'https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet-emscripten.js.mem',
   emscriptenJsUrl: 'https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet-emscripten.js',
   quietJsUrl: 'https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet.js',
+};
+
+/**
+ * Resolves a path relative to the current application base URL.
+ * Properly handles GitHub Pages subdirectories (e.g. /gongzuojiqiao4/).
+ */
+function resolveSubpathUrl(relativePath: string): string {
+  if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) {
+    return relativePath;
+  }
+  const cleanPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+  const baseUrl = (import.meta as any).env?.BASE_URL || './';
+  return new URL(cleanPath, new URL(baseUrl, window.location.href)).href;
+}
+
+export const DEFAULT_QUIET_CONFIG: QuietEngineConfig = {
+  profilesUrl: resolveSubpathUrl('quiet/quiet-profiles.json'),
+  memUrl: resolveSubpathUrl('quiet/quiet-emscripten.js.mem'),
+  emscriptenJsUrl: resolveSubpathUrl('quiet/quiet-emscripten.js'),
+  quietJsUrl: resolveSubpathUrl('quiet/quiet.js'),
 };
 
 declare global {
@@ -156,7 +168,6 @@ export function injectCCall(targetModule: any) {
  */
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Check if already injected
     const existing = document.querySelector(`script[src="${src}"]`);
     if (existing) {
       resolve();
@@ -165,9 +176,10 @@ function loadScript(src: string): Promise<void> {
     const script = document.createElement('script');
     script.type = 'text/javascript';
     script.src = src;
+    script.crossOrigin = 'anonymous';
     script.async = false;
     script.onload = () => resolve();
-    script.onerror = (e) => reject(new Error(`Failed to load script: ${src}`));
+    script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
     document.head.appendChild(script);
   });
 }
@@ -177,10 +189,10 @@ function loadScript(src: string): Promise<void> {
  * Guarantees that:
  * 1. window.Module.locateFile points strictly to memUrl.
  * 2. window.Module.intArrayFromString and ccall are injected.
- * 3. quiet.js and quiet-emscripten.js are loaded in correct order.
+ * 3. Fallback to CDN switches ALL assets (profiles, mem, scripts) consistently.
  */
 export async function initializeQuietEngine(
-  config: QuietEngineConfig = DEFAULT_QUIET_CONFIG,
+  config?: Partial<QuietEngineConfig>,
   onLog?: (msg: string) => void
 ): Promise<void> {
   const log = onLog || console.log;
@@ -189,58 +201,76 @@ export async function initializeQuietEngine(
   // 1. Prepare window.Module before loading any scripts
   window.Module = window.Module || {};
 
-  // Defense 2: Override locateFile for .mem lookup
-  const memAbsoluteUrl = new URL(config.memUrl, window.location.href).href;
-  const memDir = memAbsoluteUrl.substring(0, memAbsoluteUrl.lastIndexOf('/') + 1);
-  (window as any).memoryInitializerPrefixURL = memDir;
-  (window as any).memoryInitializerPrefix = memDir;
+  // Determine whether to use CDN or local files
+  // If hosted on GitHub Pages or if local files are missing, use CDN directly
+  const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.endsWith('github.io');
 
-  const robustLocateFile = function (path: string, prefix: string) {
-    if (path.endsWith('.mem') || path.includes('quiet-emscripten.js.mem')) {
-      log(`[Module.locateFile] Intercepted memory request for "${path}" -> ${memAbsoluteUrl}`);
-      return memAbsoluteUrl;
-    }
-    return (prefix || '') + path;
+  let activeConfig: QuietEngineConfig;
+  if (isGitHubPages) {
+    log('Detected GitHub Pages environment. Using CDN assets to prevent subpath 404...');
+    activeConfig = { ...CDN_QUIET_CONFIG, ...config };
+  } else {
+    activeConfig = { ...DEFAULT_QUIET_CONFIG, ...config };
+  }
+
+  // Pre-bind locateFile
+  let memAbsoluteUrl = new URL(activeConfig.memUrl, window.location.href).href;
+  let memDir = memAbsoluteUrl.substring(0, memAbsoluteUrl.lastIndexOf('/') + 1);
+
+  const applyLocateFile = () => {
+    (window as any).memoryInitializerPrefixURL = memDir;
+    (window as any).memoryInitializerPrefix = memDir;
+    window.Module.locateFile = function (path: string, prefix: string) {
+      if (path.endsWith('.mem') || path.includes('quiet-emscripten.js.mem')) {
+        log(`[Module.locateFile] Intercepted memory request for "${path}" -> ${memAbsoluteUrl}`);
+        return memAbsoluteUrl;
+      }
+      return (prefix || '') + path;
+    };
   };
 
-  window.Module.locateFile = robustLocateFile;
-
-  // Defense 3: Pre-inject intArrayFromString and ccall
+  applyLocateFile();
   injectIntArrayFromString(window.Module);
   injectCCall(window.Module);
 
-  // 2. Load quiet.js first
-  log('Loading quiet.js...');
+  // 2. Load quiet.js
+  log(`Loading quiet.js from: ${activeConfig.quietJsUrl}`);
   try {
-    await loadScript(config.quietJsUrl);
+    await loadScript(activeConfig.quietJsUrl);
   } catch (err) {
-    log('Failed loading local quiet.js, attempting CDN fallback...');
+    log('Failed loading local quiet.js, switching completely to CDN configuration...');
+    activeConfig = { ...CDN_QUIET_CONFIG };
+    memAbsoluteUrl = activeConfig.memUrl;
+    memDir = memAbsoluteUrl.substring(0, memAbsoluteUrl.lastIndexOf('/') + 1);
+    applyLocateFile();
     await loadScript(CDN_QUIET_CONFIG.quietJsUrl);
   }
 
-  // Ensure window globals and locateFile are preserved after quiet.js executes
-  (window as any).memoryInitializerPrefixURL = memDir;
-  (window as any).memoryInitializerPrefix = memDir;
-  window.Module.locateFile = robustLocateFile;
+  // Preserve injections after quiet.js loads
+  applyLocateFile();
   injectIntArrayFromString(window.Module);
   injectCCall(window.Module);
 
   // 3. Load quiet-emscripten.js
-  log('Loading quiet-emscripten.js...');
+  log(`Loading quiet-emscripten.js from: ${activeConfig.emscriptenJsUrl}`);
   try {
-    await loadScript(config.emscriptenJsUrl);
+    await loadScript(activeConfig.emscriptenJsUrl);
   } catch (err) {
-    log('Failed loading local quiet-emscripten.js, attempting CDN fallback...');
+    log('Failed loading local quiet-emscripten.js, switching completely to CDN...');
+    activeConfig = { ...CDN_QUIET_CONFIG };
+    memAbsoluteUrl = activeConfig.memUrl;
+    memDir = memAbsoluteUrl.substring(0, memAbsoluteUrl.lastIndexOf('/') + 1);
+    applyLocateFile();
     await loadScript(CDN_QUIET_CONFIG.emscriptenJsUrl);
   }
 
   // Re-verify injections on window.Module
-  window.Module.locateFile = robustLocateFile;
+  applyLocateFile();
   injectIntArrayFromString(window.Module);
   injectCCall(window.Module);
 
   // 4. Initialize Quiet library
-  const profilesAbsoluteUrl = new URL(config.profilesUrl, window.location.href).href;
+  const profilesAbsoluteUrl = new URL(activeConfig.profilesUrl, window.location.href).href;
   const profilesDir = profilesAbsoluteUrl.substring(0, profilesAbsoluteUrl.lastIndexOf('/') + 1);
 
   log(`Calling Quiet.init with profiles: ${profilesDir}, mem: ${memDir}`);
@@ -281,7 +311,6 @@ export async function acquireMicrophoneStream(onLog?: (msg: string) => void): Pr
     throw new Error('navigator.mediaDevices.getUserMedia is not supported by this browser.');
   }
 
-  // High fidelity acoustic constraints (disable noise suppression, echo cancellation, AGC)
   const constraints: MediaStreamConstraints = {
     audio: {
       echoCancellation: false,
@@ -295,7 +324,6 @@ export async function acquireMicrophoneStream(onLog?: (msg: string) => void): Pr
 
   window.__quietSonicStream = stream;
 
-  // Intercept navigator.getUserMedia and webkitGetUserMedia
   const shimGum = function (
     constraintsArg: any,
     successCallback: (stream: MediaStream) => void,

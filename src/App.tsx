@@ -263,7 +263,7 @@ export default function App() {
     addLog('info', '【防御机制 2 & 3 执行】加载 Quiet.js 与 WebAssembly 模块，配置绝对 locateFile 与 intArrayFromString...');
 
     try {
-      await initializeQuietEngine(DEFAULT_QUIET_CONFIG, (msg) => addLog('info', msg));
+      await initializeQuietEngine(undefined, (msg) => addLog('info', msg));
       setIsEngineReady(true);
       setStatusMessage('引擎就绪，请开启麦克风');
       addLog('success', 'WASM 引擎预载成功！现在请点击“开启麦克风监听”按钮。');
@@ -295,7 +295,7 @@ export default function App() {
       // If engine not yet preloaded, preload now
       if (!isEngineReady) {
         addLog('info', '自动初始化 Quiet.js 核心...');
-        await initializeQuietEngine(DEFAULT_QUIET_CONFIG, (msg) => addLog('info', msg));
+        await initializeQuietEngine(undefined, (msg) => addLog('info', msg));
         setIsEngineReady(true);
       }
 
