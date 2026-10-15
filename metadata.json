@@ -1,0 +1,6 @@
+{
+  "name": "QuietSonic - 高速声波数据接收端",
+  "description": "基于 Quiet.js (cable-64k) 的 Android 手机浏览器高速声波数据接收端，支持麦克风监听、自定义分包协议解析、CRC32校验与自动文件下载。",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

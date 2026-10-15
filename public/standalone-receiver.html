@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>QuietSonic - 高速声波数据接收端 (cable-64k)</title>
+  <meta name="description" content="基于 Quiet.js (cable-64k) 的 Android 手机浏览器高速声波数据接收端，支持麦克风监听、分包解析与CRC32校验。">
+  <style>
+    :root {
+      --bg: #0a0d14;
+      --card-bg: #121824;
+      --card-border: #1e293b;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent: #06b6d4;
+      --accent-glow: rgba(6, 182, 212, 0.35);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.35);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.35);
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      min-height: 100vh;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      line-height: 1.4;
+    }
+    header {
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #000;
+      font-weight: 900;
+      font-size: 18px;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    .brand-text h1 {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .brand-text p {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .profile-tag {
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: monospace;
+    }
+    /* Critical on-screen error banner */
+    #fatal-error-banner {
+      display: none;
+      background: #450a0a;
+      border: 2px solid var(--danger);
+      border-radius: 10px;
+      padding: 12px;
+      color: #fecaca;
+      box-shadow: 0 0 16px var(--danger-glow);
+      font-size: 12px;
+      animation: pulseAlert 2s infinite;
+    }
+    @keyframes pulseAlert {
+      0%, 100% { border-color: var(--danger); }
+      50% { border-color: #b91c1c; }
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    /* Controls and primary actions */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 480px) {
+      .controls-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .btn {
+      appearance: none;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn:active {
+      transform: scale(0.98);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #06b6d4, #0891b2);
+      color: #fff;
+      box-shadow: 0 4px 14px var(--accent-glow);
+    }
+    .btn-primary:hover {
+      filter: brightness(1.1);
+    }
+    .btn-success {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      box-shadow: 0 4px 14px var(--success-glow);
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: #fff;
+    }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+    }
+    .btn-outline:hover {
+      background: #1e293b;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    /* Status indicators */
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      background: #090d16;
+      border-radius: 8px;
+      border: 1px solid #1a2233;
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #64748b;
+    }
+    .status-dot.active {
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success-glow);
+      animation: blinkDot 1.5s infinite;
+    }
+    .status-dot.warning {
+      background: var(--warning);
+    }
+    .status-dot.error {
+      background: var(--danger);
+      box-shadow: 0 0 10px var(--danger-glow);
+    }
+    @keyframes blinkDot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    /* Metrics display */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .metric-box {
+      background: #090d16;
+      border: 1px solid #1a2233;
+      border-radius: 8px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+    .metric-value {
+      font-size: 20px;
+      font-weight: 700;
+      font-family: monospace;
+      color: #fff;
+    }
+    .metric-value.highlight {
+      color: var(--accent);
+    }
+    .metric-value.danger {
+      color: var(--danger);
+    }
+    .metric-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+    /* Progress and Chunk Grid */
+    .progress-bar-container {
+      width: 100%;
+      height: 14px;
+      background: #090d16;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #1e293b;
+      position: relative;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #06b6d4, #10b981);
+      box-shadow: 0 0 12px var(--accent-glow);
+      transition: width 0.15s ease-out;
+    }
+    .chunk-matrix {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      max-height: 90px;
+      overflow-y: auto;
+      padding: 6px;
+      background: #090d16;
+      border-radius: 8px;
+      border: 1px solid #1a2233;
+    }
+    .chunk-cell {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      background: #1e293b;
+      transition: background-color 0.2s;
+    }
+    .chunk-cell.received {
+      background: var(--success);
+      box-shadow: 0 0 4px var(--success-glow);
+    }
+    .chunk-cell.error {
+      background: var(--danger);
+    }
+    /* Audio spectrum canvas */
+    .spectrum-canvas {
+      width: 100%;
+      height: 60px;
+      background: #090d16;
+      border-radius: 8px;
+      border: 1px solid #1a2233;
+      display: block;
+    }
+    /* Logs Console */
+    .console-box {
+      background: #090d16;
+      border: 1px solid #1a2233;
+      border-radius: 8px;
+      padding: 8px;
+      font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 11px;
+      max-height: 160px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #94a3b8;
+    }
+    .log-line {
+      margin-bottom: 3px;
+      line-height: 1.3;
+    }
+    .log-line.error { color: #f87171; font-weight: 600; }
+    .log-line.success { color: #34d399; }
+    .log-line.info { color: #38bdf8; }
+    .log-line.warn { color: #fbbf24; }
+    /* File complete badge */
+    .file-ready-card {
+      display: none;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid var(--success);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+      gap: 8px;
+      animation: slideUp 0.3s ease-out;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .file-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .file-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+
+  <!-- Early Global Error Trap for Android Chrome Debugging -->
+  <script>
+    window.__logBuffer = [];
+    function appendOnScreenLog(type, msg) {
+      const time = new Date().toTimeString().split(' ')[0];
+      const line = `[${time}] ${msg}`;
+      window.__logBuffer.push({ type, text: line });
+      const consoleEl = document.getElementById('debug-console');
+      if (consoleEl) {
+        const div = document.createElement('div');
+        div.className = `log-line ${type}`;
+        div.textContent = line;
+        consoleEl.appendChild(div);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+    }
+
+    window.onerror = function (msg, url, line, col, error) {
+      const banner = document.getElementById('fatal-error-banner');
+      const errText = `JS运行时异常: ${msg}\n位置: ${url ? url.split('/').pop() : 'script'}:${line}:${col}`;
+      if (banner) {
+        banner.style.display = 'block';
+        banner.innerText = errText;
+      }
+      appendOnScreenLog('error', errText);
+      return false;
+    };
+
+    window.onunhandledrejection = function (e) {
+      const banner = document.getElementById('fatal-error-banner');
+      const reason = e.reason ? (e.reason.message || e.reason) : '未知Promise异常';
+      const errText = `未捕获的Promise拒绝: ${reason}`;
+      if (banner) {
+        banner.style.display = 'block';
+        banner.innerText = errText;
+      }
+      appendOnScreenLog('error', errText);
+    };
+
+    // ==========================================
+    // 防御机制 2 & 3: 必须在加载 quiet.js / Emscripten 前重写 Module
+    // ==========================================
+    window.Module = window.Module || {};
+
+    // 内存文件绝对路径重定向 (避免相对路径 404 abort)
+    window.Module.locateFile = function (path, prefix) {
+      if (path.endsWith('.mem') || path.indexOf('quiet-emscripten.js.mem') !== -1) {
+        const memUrl = 'https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet-emscripten.js.mem';
+        appendOnScreenLog('info', `Module.locateFile 重定向 .mem: ${memUrl}`);
+        return memUrl;
+      }
+      return (prefix || '') + path;
+    };
+
+    // 注入兼容版 UTF-8 intArrayFromString
+    window.Module.intArrayFromString = function (stringy, dontAddNull, length) {
+      const utf8 = [];
+      for (let i = 0; i < stringy.length; i++) {
+        let charcode = stringy.charCodeAt(i);
+        if (charcode < 0x80) {
+          utf8.push(charcode);
+        } else if (charcode < 0x800) {
+          utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
+        } else if (charcode < 0xd800 || charcode >= 0xe000) {
+          utf8.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+        } else {
+          i++;
+          charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (stringy.charCodeAt(i) & 0x3ff));
+          utf8.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+        }
+      }
+      if (!dontAddNull) utf8.push(0);
+      if (length && length > 0) {
+        while (utf8.length < length) utf8.push(0);
+        if (utf8.length > length) utf8.length = length;
+      }
+      return utf8;
+    };
+
+    // 注入兼容版 ccall 运行时函数
+    window.Module.ccall = function (ident, returnType, argTypes, args) {
+      const toRet = {
+        string: function (val) {
+          if (!val) return '';
+          let ret = '';
+          let i = 0;
+          while (window.Module.HEAPU8 && window.Module.HEAPU8[val + i]) {
+            ret += String.fromCharCode(window.Module.HEAPU8[val + i]);
+            i++;
+          }
+          return ret;
+        },
+        boolean: function (val) { return Boolean(val); }
+      };
+      const func = window.Module['_' + ident];
+      if (typeof func !== 'function') {
+        throw new Error(`Emscripten 函数 _${ident} 不存在`);
+      }
+      const cArgs = [];
+      const allocated = [];
+      if (args && argTypes) {
+        for (let i = 0; i < args.length; i++) {
+          const type = argTypes[i];
+          const val = args[i];
+          if (type === 'string') {
+            const arr = window.Module.intArrayFromString(val);
+            const ptr = window.Module._malloc(arr.length);
+            window.Module.HEAPU8.set(arr, ptr);
+            cArgs.push(ptr);
+            allocated.push(ptr);
+          } else if (type === 'array') {
+            const u8 = val instanceof Uint8Array ? val : new Uint8Array(val.buffer || val);
+            const ptr = window.Module._malloc(u8.length);
+            window.Module.HEAPU8.set(u8, ptr);
+            cArgs.push(ptr);
+            allocated.push(ptr);
+          } else {
+            cArgs.push(val);
+          }
+        }
+      }
+      const ret = func.apply(null, cArgs);
+      for (let p = 0; p < allocated.length; p++) {
+        if (typeof window.Module._free === 'function') window.Module._free(allocated[p]);
+      }
+      if (returnType && toRet[returnType]) return toRet[returnType](ret);
+      return ret;
+    };
+  </script>
+
+  <!-- 引入官方稳定版 Quiet.js 核心库 -->
+  <script src="https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet.js"></script>
+  <script async src="https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet-emscripten.js"></script>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">Q</div>
+      <div class="brand-text">
+        <h1>QuietSonic 接收端</h1>
+        <p>声波高速数据解调 (10.2kHz QAM1024)</p>
+      </div>
+    </div>
+    <div class="profile-tag">cable-64k</div>
+  </header>
+
+  <!-- 错误横幅 (手机端无法打开控制台时的救生圈) -->
+  <div id="fatal-error-banner"></div>
+
+  <!-- 状态概览卡片 -->
+  <div class="card">
+    <div class="card-title">
+      <span>连接与监听状态</span>
+      <span id="session-status-text" style="color: var(--warning); font-size: 11px;">未初始化</span>
+    </div>
+
+    <div class="status-row">
+      <div class="status-item">
+        <div class="status-dot" id="dot-engine"></div>
+        <span>WASM 引擎</span>
+      </div>
+      <div class="status-item">
+        <div class="status-dot" id="dot-mic"></div>
+        <span>麦克风流</span>
+      </div>
+      <div class="status-item">
+        <div class="status-dot" id="dot-receiver"></div>
+        <span>声波解调器</span>
+      </div>
+    </div>
+
+    <div class="controls-grid">
+      <button class="btn btn-outline" id="btn-load-engine" onclick="onLoadEngineClick()">
+        <span>1. 预载 WASM 引擎</span>
+      </button>
+      <button class="btn btn-primary" id="btn-start-mic" onclick="onStartMicReceiverClick()">
+        <span>2. 开启麦克风监听</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 实时速率与错帧统计 -->
+  <div class="metrics-grid">
+    <div class="metric-box">
+      <div class="metric-value highlight" id="metric-kbps">0.0</div>
+      <div class="metric-label">速率 (kbps)</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-value danger" id="metric-crc-errors">0</div>
+      <div class="metric-label">CRC 错帧</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-value" id="metric-chunks">0 / 0</div>
+      <div class="metric-label">数据块进度</div>
+    </div>
+  </div>
+
+  <!-- 接收进度与分块矩阵 -->
+  <div class="card">
+    <div class="card-title">
+      <span id="transfer-file-title">等待传输握手 (0xDEADBEEF)...</span>
+      <span id="metric-progress-percent" style="color: var(--accent); font-family: monospace;">0.0%</span>
+    </div>
+
+    <div class="progress-bar-container">
+      <div class="progress-bar-fill" id="progress-bar"></div>
+    </div>
+
+    <div class="chunk-matrix" id="chunk-matrix">
+      <!-- 动态小块单元 -->
+    </div>
+  </div>
+
+  <!-- 传输完成及下载卡片 -->
+  <div class="file-ready-card" id="file-ready-card">
+    <div style="font-size: 24px; color: var(--success);">✓</div>
+    <div class="file-name" id="ready-filename">file.bin</div>
+    <div class="file-meta" id="ready-meta">大小: 0 KB | 全局 CRC32 校验一致</div>
+    <div style="display: flex; gap: 8px; justify-content: center; margin-top: 6px;">
+      <button class="btn btn-success" style="padding: 8px 16px; font-size: 13px;" onclick="triggerManualDownload()">重新下载文件</button>
+      <button class="btn btn-outline" style="padding: 8px 16px; font-size: 13px;" onclick="resetReceiverSession()">重置接收器</button>
+    </div>
+  </div>
+
+  <!-- 麦克风音频频谱 (用于确认麦克风正在拾音及 10.2kHz 载波) -->
+  <div class="card">
+    <div class="card-title">
+      <span>麦克风频谱监视器</span>
+      <span style="font-size: 10px; color: var(--text-muted);">载波中心: ~10.2kHz</span>
+    </div>
+    <canvas class="spectrum-canvas" id="spectrum-canvas" width="600" height="100"></canvas>
+  </div>
+
+  <!-- 手机端调试控制台 -->
+  <div class="card">
+    <div class="card-title">
+      <span>运行日志</span>
+      <div style="display: flex; gap: 6px;">
+        <button class="btn btn-outline" style="padding: 2px 8px; font-size: 11px;" onclick="simulatePacketTest()">模拟测试包</button>
+        <button class="btn btn-outline" style="padding: 2px 8px; font-size: 11px;" onclick="clearLogs()">清空</button>
+      </div>
+    </div>
+    <div class="console-box" id="debug-console"></div>
+  </div>
+
+  <script>
+    // ==========================================
+    // CRC32 标准算法 (IEEE 802.3, 多项式 0xEDB88320)
+    // ==========================================
+    const CRC_TABLE = (function () {
+      const table = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let k = 0; k < 8; k++) {
+          c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        }
+        table[i] = c >>> 0;
+      }
+      return table;
+    })();
+
+    function calculateCRC32(data) {
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < data.length; i++) {
+        crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ data[i]) & 0xFF];
+      }
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    // ==========================================
+    // 协议常量与状态管理
+    // ==========================================
+    const PROTOCOL = {
+      MAGIC: 0xDEADBEEF,
+      HEADER_SIZE: 78,
+      CHUNK_SIZE: 1030,
+      PAYLOAD_SIZE: 1024,
+      PROFILE: 'cable-64k'
+    };
+
+    let session = {
+      isEngineReady: false,
+      isMicActive: false,
+      isReceiverActive: false,
+      header: null,
+      chunks: new Map(),
+      crcErrors: 0,
+      totalFrames: 0,
+      startTime: null,
+      lastChunkTime: null,
+      bytesInWindow: 0,
+      windowStart: performance.now(),
+      lastCompletedFile: null
+    };
+
+    let quietReceiverInstance = null;
+    let globalAudioStream = null;
+    let audioContext = null;
+    let analyserNode = null;
+    let animFrameId = null;
+
+    // 页面日志
+    function log(type, msg) {
+      appendOnScreenLog(type, msg);
+    }
+
+    function clearLogs() {
+      const el = document.getElementById('debug-console');
+      if (el) el.innerHTML = '';
+      window.__logBuffer = [];
+    }
+
+    // 更新界面状态指示
+    function updateUI() {
+      document.getElementById('dot-engine').className = 'status-dot ' + (session.isEngineReady ? 'active' : '');
+      document.getElementById('dot-mic').className = 'status-dot ' + (session.isMicActive ? 'active' : '');
+      document.getElementById('dot-receiver').className = 'status-dot ' + (session.isReceiverActive ? 'active' : '');
+
+      document.getElementById('metric-crc-errors').textContent = session.crcErrors;
+
+      if (session.header) {
+        const total = session.header.totalChunks;
+        const current = session.chunks.size;
+        document.getElementById('metric-chunks').textContent = `${current} / ${total}`;
+        const pct = total > 0 ? ((current / total) * 100).toFixed(1) : 0;
+        document.getElementById('metric-progress-percent').textContent = `${pct}%`;
+        document.getElementById('progress-bar').style.width = `${pct}%`;
+        document.getElementById('transfer-file-title').textContent = `正在接收: ${session.header.filename} (${(session.header.fileSize / 1024).toFixed(1)} KB)`;
+      } else {
+        document.getElementById('metric-chunks').textContent = '0 / 0';
+        document.getElementById('metric-progress-percent').textContent = '0.0%';
+        document.getElementById('progress-bar').style.width = '0%';
+        document.getElementById('transfer-file-title').textContent = session.isReceiverActive ? '监听中，等待数据包 (0xDEADBEEF)...' : '接收端未就绪';
+      }
+    }
+
+    // ==========================================
+    // 避坑机制 1: 分离引擎下载与麦克风请求
+    // ==========================================
+    function onLoadEngineClick() {
+      log('info', '正在下载并加载 Quiet.js / Emscripten 核心...');
+      document.getElementById('session-status-text').textContent = '正在加载引擎...';
+
+      if (!window.Quiet) {
+        log('error', 'Quiet.js 脚本尚未加载完成，请稍候重试');
+        return;
+      }
+
+      // 重定向 profiles 与 mem 路径至 CDN
+      const profilesUrl = 'https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet-profiles.json';
+      const memUrl = 'https://cdn.jsdelivr.net/gh/quiet/quiet-js@master/quiet-emscripten.js.mem';
+      const profilesPrefix = profilesUrl.substring(0, profilesUrl.lastIndexOf('/') + 1);
+      const memPrefix = memUrl.substring(0, memUrl.lastIndexOf('/') + 1);
+
+      try {
+        window.Quiet.init({
+          profilesPrefix: profilesPrefix,
+          memoryInitializerPrefix: memPrefix,
+          onReady: function () {
+            session.isEngineReady = true;
+            log('success', 'WASM 引擎就绪！可以点击“2. 开启麦克风监听”');
+            document.getElementById('session-status-text').textContent = '引擎就绪';
+            document.getElementById('btn-load-engine').disabled = true;
+            document.getElementById('btn-load-engine').innerText = '✓ 引擎已就绪';
+            updateUI();
+          },
+          onError: function (reason) {
+            log('error', `Quiet.init 初始化失败: ${reason}`);
+            document.getElementById('session-status-text').textContent = '引擎失败';
+            updateUI();
+          }
+        });
+      } catch (err) {
+        log('error', `Quiet.init 抛出异常: ${err.message}`);
+      }
+    }
+
+    // 用户手势同步调用 getUserMedia 并启动接收端
+    async function onStartMicReceiverClick() {
+      const btn = document.getElementById('btn-start-mic');
+      btn.disabled = true;
+      btn.innerText = '正在启动...';
+
+      // 若引擎尚未预载，先预载
+      if (!session.isEngineReady) {
+        log('info', '自动触发引擎预载...');
+        onLoadEngineClick();
+        // 稍作等待
+        await new Promise(r => setTimeout(r, 600));
+      }
+
+      log('info', '同步请求麦克风授权 (关闭回声消除与降噪)...');
+
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('当前浏览器不支持 navigator.mediaDevices.getUserMedia');
+        }
+
+        // 关键：在用户点击事件的调用栈中立即获取流
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
+        });
+
+        globalAudioStream = stream;
+        session.isMicActive = true;
+        log('success', `麦克风授权成功！捕获音轨数: ${stream.getAudioTracks().length}`);
+
+        // 初始化频谱分析器
+        setupAudioSpectrum(stream);
+
+        // 拦截并交给 Quiet
+        window.__quietSonicStream = stream;
+        const shim = function (constraints, success, fail) {
+          log('info', '将授权麦克风流递交给 Quiet.js...');
+          success(stream);
+        };
+        navigator.getUserMedia = shim;
+        navigator.webkitGetUserMedia = shim;
+
+        // 启动 Quiet Receiver
+        startQuietReceiver();
+
+        btn.innerText = '✓ 监听中';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-success');
+      } catch (err) {
+        log('error', `麦克风或解调器启动失败: ${err.name} - ${err.message}`);
+        document.getElementById('session-status-text').textContent = '麦克风被拦截';
+        btn.disabled = false;
+        btn.innerText = '重试开启麦克风';
+        updateUI();
+      }
+    }
+
+    function startQuietReceiver() {
+      log('info', `创建 Quiet 接收器 (Profile: ${PROTOCOL.PROFILE})...`);
+
+      try {
+        quietReceiverInstance = window.Quiet.receiver({
+          profile: PROTOCOL.PROFILE,
+          onReceive: onQuietPayloadReceived,
+          onCreate: function () {
+            session.isReceiverActive = true;
+            document.getElementById('session-status-text').textContent = '正在监听声波...';
+            log('success', '声波接收端已激活，正在监听 10.2kHz 载波数据...');
+            updateUI();
+          },
+          onCreateFail: function (reason) {
+            session.isReceiverActive = false;
+            log('error', `创建接收端失败: ${reason}`);
+            updateUI();
+          },
+          onReceiveFail: function (totalFails) {
+            session.crcErrors++;
+            log('warn', `Quiet 底层帧校验失败 (累积: ${totalFails})`);
+            updateUI();
+          },
+          onReceiverStatsUpdate: function (stats) {
+            if (stats && stats.length > 0) {
+              const latest = stats[stats.length - 1];
+              // 有声波信号到达
+            }
+          }
+        });
+      } catch (err) {
+        log('error', `调用 Quiet.receiver 异常: ${err.message}`);
+      }
+    }
+
+    // ==========================================
+    // 协议解析与分包处理
+    // ==========================================
+    function onQuietPayloadReceived(rawBuffer) {
+      const bytes = new Uint8Array(rawBuffer);
+      session.totalFrames++;
+      const now = performance.now();
+
+      if (!session.startTime) session.startTime = now;
+
+      // 实时速率统计 (Rolling 500ms Window)
+      session.bytesInWindow += bytes.byteLength;
+      const windowSec = (now - session.windowStart) / 1000;
+      if (windowSec >= 0.5) {
+        const kbps = ((session.bytesInWindow * 8) / 1000) / windowSec;
+        document.getElementById('metric-kbps').textContent = kbps.toFixed(1);
+        session.bytesInWindow = 0;
+        session.windowStart = now;
+      }
+
+      // 1. 判断是否为元数据头 (78 字节)
+      if (bytes.length === PROTOCOL.HEADER_SIZE) {
+        parseAndSetHeader(bytes);
+        return;
+      }
+
+      // 2. 判断是否为数据块 (1030 字节)
+      if (bytes.length === PROTOCOL.CHUNK_SIZE) {
+        parseAndSetChunk(bytes);
+        return;
+      }
+
+      // 未知帧大小
+      session.crcErrors++;
+      log('warn', `收到异常长度数据帧: ${bytes.length} 字节 (应为 78 或 1030)`);
+      updateUI();
+    }
+
+    function parseAndSetHeader(bytes) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const magic = view.getUint32(0, false) >>> 0;
+
+      if (magic !== PROTOCOL.MAGIC) {
+        session.crcErrors++;
+        log('error', `握手失败: 魔数不匹配 (0x${magic.toString(16).toUpperCase()} != 0xDEADBEEF)`);
+        updateUI();
+        return;
+      }
+
+      // 解析文件名
+      const nameSlice = bytes.subarray(4, 68);
+      let nullPos = nameSlice.indexOf(0);
+      if (nullPos === -1) nullPos = nameSlice.length;
+      const filename = new TextDecoder('utf-8').decode(nameSlice.subarray(0, nullPos)) || 'acoustic_data.bin';
+
+      const fileSize = view.getUint32(68, false) >>> 0;
+      const totalChunks = view.getUint16(72, false);
+      const fileCrc = view.getUint32(74, false) >>> 0;
+
+      session.header = { magic, filename, fileSize, totalChunks, fileCrc };
+      session.chunks.clear();
+
+      log('success', `[握手成功] 收到文件头: "${filename}", 大小: ${fileSize} 字节, 分块数: ${totalChunks}, 全局CRC: 0x${fileCrc.toString(16).toUpperCase()}`);
+      document.getElementById('session-status-text').textContent = '握手成功，接收数据块...';
+
+      // 绘制分块矩阵
+      initChunkMatrix(totalChunks);
+      updateUI();
+    }
+
+    function parseAndSetChunk(bytes) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const seq = view.getUint16(0, false);
+      const payload = bytes.subarray(2, 1026);
+      const expectedCrc = view.getUint32(1026, false) >>> 0;
+
+      // 验证 1024 字节有效载荷的 CRC32
+      const computedCrc = calculateCRC32(payload);
+
+      if (computedCrc !== expectedCrc) {
+        session.crcErrors++;
+        log('error', `[CRC错误] 块 #${seq} 校验失败: 计算值 0x${computedCrc.toString(16).toUpperCase()} != 预期值 0x${expectedCrc.toString(16).toUpperCase()}`);
+        markChunkCell(seq, 'error');
+        updateUI();
+        return;
+      }
+
+      // 保存有效块
+      session.chunks.set(seq, payload.slice());
+      session.lastChunkTime = performance.now();
+      markChunkCell(seq, 'received');
+      updateUI();
+
+      // 判断是否完成全部接收
+      if (session.header && session.chunks.size >= session.header.totalChunks) {
+        assembleAndDownloadFile();
+      }
+    }
+
+    // 初始化分块矩阵格子
+    function initChunkMatrix(total) {
+      const container = document.getElementById('chunk-matrix');
+      container.innerHTML = '';
+      for (let i = 0; i < total; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'chunk-cell';
+        cell.id = `chunk-cell-${i}`;
+        cell.title = `块 #${i}`;
+        container.appendChild(cell);
+      }
+    }
+
+    function markChunkCell(seq, state) {
+      const cell = document.getElementById(`chunk-cell-${seq}`);
+      if (cell) {
+        cell.className = `chunk-cell ${state}`;
+      }
+    }
+
+    // 拼接文件并自动下载
+    function assembleAndDownloadFile() {
+      const { filename, fileSize, totalChunks, fileCrc } = session.header;
+      log('info', `全部 ${totalChunks} 个数据块接收完毕，开始拼接与全局 CRC 验证...`);
+
+      const fullBuffer = new Uint8Array(totalChunks * PROTOCOL.PAYLOAD_SIZE);
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = session.chunks.get(i);
+        if (!chunk) {
+          log('error', `缺少分块 #${i}，无法拼接文件！`);
+          return;
+        }
+        fullBuffer.set(chunk, i * PROTOCOL.PAYLOAD_SIZE);
+      }
+
+      // 根据文件实际大小精确截断（去掉最后一块的补零）
+      const finalFileData = fullBuffer.slice(0, fileSize);
+      const computedFinalCrc = calculateCRC32(finalFileData);
+
+      if (computedFinalCrc !== fileCrc) {
+        log('error', `[全局CRC32失败] 文件损坏！计算值: 0x${computedFinalCrc.toString(16).toUpperCase()} != 预期: 0x${fileCrc.toString(16).toUpperCase()}`);
+        document.getElementById('session-status-text').textContent = '全局校验失败';
+        return;
+      }
+
+      log('success', `[全局CRC32一致] 验证成功 (0x${fileCrc.toString(16).toUpperCase()})，立即自动触发下载！`);
+      document.getElementById('session-status-text').textContent = '传输完成已下载';
+
+      session.lastCompletedFile = {
+        data: finalFileData,
+        filename: filename
+      };
+
+      // 显示完成卡片
+      document.getElementById('file-ready-card').style.display = 'block';
+      document.getElementById('ready-filename').textContent = filename;
+      document.getElementById('ready-meta').textContent = `大小: ${(fileSize / 1024).toFixed(2)} KB (${fileSize} 字节) | CRC32: 0x${fileCrc.toString(16).toUpperCase()}`;
+
+      // 自动触发下载
+      downloadBlob(finalFileData, filename);
+    }
+
+    function downloadBlob(data, filename) {
+      const blob = new Blob([data], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      log('info', `已通过浏览器触发下载: ${filename}`);
+    }
+
+    function triggerManualDownload() {
+      if (session.lastCompletedFile) {
+        downloadBlob(session.lastCompletedFile.data, session.lastCompletedFile.filename);
+      }
+    }
+
+    function resetReceiverSession() {
+      session.header = null;
+      session.chunks.clear();
+      session.crcErrors = 0;
+      session.startTime = null;
+      session.lastChunkTime = null;
+      document.getElementById('file-ready-card').style.display = 'none';
+      document.getElementById('chunk-matrix').innerHTML = '';
+      document.getElementById('metric-kbps').textContent = '0.0';
+      updateUI();
+      log('info', '接收会话已重置，重新等待数据流');
+    }
+
+    // ==========================================
+    // 麦克风音频频谱可视化 (Web Audio API Analyser)
+    // ==========================================
+    function setupAudioSpectrum(stream) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        audioContext = new AudioCtx();
+        const source = audioContext.createMediaStreamSource(stream);
+        analyserNode = audioContext.createAnalyser();
+        analyserNode.fftSize = 256;
+        source.connect(analyserNode);
+
+        const canvas = document.getElementById('spectrum-canvas');
+        const ctx = canvas.getContext('2d');
+        const bufferLength = analyserNode.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        function draw() {
+          animFrameId = requestAnimationFrame(draw);
+          analyserNode.getByteFrequencyData(dataArray);
+
+          ctx.fillStyle = '#090d16';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          const barWidth = (canvas.width / bufferLength) * 1.5;
+          let x = 0;
+
+          for (let i = 0; i < bufferLength; i++) {
+            const barHeight = (dataArray[i] / 255) * canvas.height;
+            // 载波高亮 (10.2kHz 位于频段中后段)
+            if (i > 50 && i < 75) {
+              ctx.fillStyle = '#06b6d4';
+            } else {
+              ctx.fillStyle = '#334155';
+            }
+            ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+            x += barWidth;
+          }
+        }
+        draw();
+      } catch (e) {
+        log('warn', `频谱分析器启动失败: ${e.message}`);
+      }
+    }
+
+    // ==========================================
+    // 调试辅助: 模拟发送测试分包验证接收逻辑
+    // ==========================================
+    function simulatePacketTest() {
+      log('info', '正在生成模拟测试数据 (2.5KB 文本)...');
+      const testContent = 'QuietSonic acoustic transfer test payload. 速度快，校验严，自动组装！\n' +
+        'Line 2: 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n'.repeat(50);
+      const testBytes = new TextEncoder().encode(testContent);
+      const filename = 'acoustic_test_' + Date.now().toString().slice(-4) + '.txt';
+
+      const fileSize = testBytes.length;
+      const totalChunks = Math.ceil(fileSize / PROTOCOL.PAYLOAD_SIZE);
+      const fileCrc = calculateCRC32(testBytes);
+
+      // 1. 构建 Header 78 字节
+      const headerBuf = new Uint8Array(PROTOCOL.HEADER_SIZE);
+      const hView = new DataView(headerBuf.buffer);
+      hView.setUint32(0, PROTOCOL.MAGIC, false);
+      const nameBytes = new TextEncoder().encode(filename);
+      headerBuf.set(nameBytes.subarray(0, Math.min(nameBytes.length, 64)), 4);
+      hView.setUint32(68, fileSize, false);
+      hView.setUint16(72, totalChunks, false);
+      hView.setUint32(74, fileCrc, false);
+
+      onQuietPayloadReceived(headerBuf.buffer);
+
+      // 2. 发送 Data Chunks 1030 字节
+      for (let i = 0; i < totalChunks; i++) {
+        setTimeout(() => {
+          const chunkBuf = new Uint8Array(PROTOCOL.CHUNK_SIZE);
+          const cView = new DataView(chunkBuf.buffer);
+          cView.setUint16(0, i, false);
+
+          const start = i * PROTOCOL.PAYLOAD_SIZE;
+          const end = Math.min(start + PROTOCOL.PAYLOAD_SIZE, fileSize);
+          chunkBuf.set(testBytes.subarray(start, end), 2);
+
+          const payloadSlice = chunkBuf.subarray(2, 1026);
+          const chunkCrc = calculateCRC32(payloadSlice);
+          cView.setUint32(1026, chunkCrc, false);
+
+          onQuietPayloadReceived(chunkBuf.buffer);
+        }, (i + 1) * 200);
+      }
+    }
+  </script>
+</body>
+</html>

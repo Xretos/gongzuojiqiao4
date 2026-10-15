@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>QuietSonic - 高速声波数据接收端 (cable-64k)</title>
+    <meta name="description" content="基于 Quiet.js (cable-64k) 的 Android 手机浏览器高速声波数据接收端，支持麦克风监听、分包解析与CRC32校验。" />
+    <meta property="og:title" content="QuietSonic - 高速声波数据接收端 (cable-64k)" />
+    <meta property="og:description" content="基于 Quiet.js (cable-64k) 的 Android 手机浏览器高速声波数据接收端，支持麦克风监听、分包解析与CRC32校验。" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+
+    <!-- 防御机制 2 & 3: 在引入任何第三方脚本或引擎前配置 Module -->
+    <script>
+      window.__quietSonicGlobalErrors = [];
+      window.onerror = function (msg, url, line, col, error) {
+        var errInfo = {
+          time: new Date().toLocaleTimeString(),
+          msg: String(msg),
+          file: url ? url.split('/').pop() : 'script',
+          line: line,
+          col: col,
+          stack: error && error.stack ? error.stack : ''
+        };
+        window.__quietSonicGlobalErrors.push(errInfo);
+        if (window.__onQuietSonicError) {
+          window.__onQuietSonicError(errInfo);
+        }
+        return false;
+      };
+
+      window.onunhandledrejection = function (e) {
+        var reason = e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection';
+        var errInfo = {
+          time: new Date().toLocaleTimeString(),
+          msg: 'Unhandled Promise: ' + reason,
+          file: 'promise',
+          line: 0,
+          col: 0,
+          stack: e.reason && e.reason.stack ? e.reason.stack : ''
+        };
+        window.__quietSonicGlobalErrors.push(errInfo);
+        if (window.__onQuietSonicError) {
+          window.__onQuietSonicError(errInfo);
+        }
+      };
+
+      // 初始化 window.Module 并设置 locateFile 重定向
+      window.Module = window.Module || {};
+      window.Module.locateFile = function(path, prefix) {
+        if (path.endsWith('.mem') || path.indexOf('quiet-emscripten.js.mem') !== -1) {
+          return '/quiet/quiet-emscripten.js.mem';
+        }
+        return (prefix || '') + path;
+      };
+
+      // 兼容版 UTF-8 intArrayFromString
+      window.Module.intArrayFromString = function(str, dontAddNull, length) {
+        var utf8 = [];
+        for (var i = 0; i < str.length; i++) {
+          var charcode = str.charCodeAt(i);
+          if (charcode < 0x80) utf8.push(charcode);
+          else if (charcode < 0x800) {
+            utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
+          } else if (charcode < 0xd800 || charcode >= 0xe000) {
+            utf8.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+          } else {
+            i++;
+            charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
+            utf8.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+          }
+        }
+        if (!dontAddNull) utf8.push(0);
+        if (length && length > 0) {
+          while (utf8.length < length) utf8.push(0);
+          if (utf8.length > length) utf8.length = length;
+        }
+        return utf8;
+      };
+    </script>
+  </head>
+  <body class="bg-[#0b0f19] text-slate-100 antialiased selection:bg-cyan-500 selection:text-black">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
